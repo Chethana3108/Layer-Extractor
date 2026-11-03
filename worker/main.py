@@ -85,14 +85,22 @@ class Processor:
                              f"Fewer than {s.min_objects_to_split} distinct objects detected")
                 return
 
+            # Inherit parent's lifecycle status (Created=542 for Create tab, Approved=544 for Assets tab)
+            parent_lc = (
+                ent.get("relations", {})
+                .get("FinalLifeCycleStatusToAsset", {})
+                .get("parent", {})
+                .get("href")
+            ) or f"{self.ch.base}/api/entities/542"
+
             stem = os.path.splitext(file_name)[0]
             created: list[int] = []
             for n, c in enumerate(cutouts, 1):
                 name = f"{stem}{s.cutout_marker}{n:02d}_{_slug(c.label)}_{c.kind}.{c.ext}"
                 new_id = self.ch.upload_new_asset(name, c.data, c.mime)
                 # Link custom ParentAssetToCutoutAsset and built-in RelatedAsset (visible in UI).
-                # Cutout must have FinalLifeCycleStatusToAsset=544 (Approved) and ContentRepositoryToAsset=734 (Standard)
-                # so that Content Hub's "Related Assets" search component (Component 38832) displays them.
+                # Cutout inherits parent's lifecycle status (Created=542 so it stays in the Create tab)
+                # and Standard repository (734) so it is visible in DAM search and Related Assets.
                 self.ch.update_entity(
                     new_id,
                     properties={
@@ -105,7 +113,7 @@ class Processor:
                     relations={
                         s.rel_parent: {"parent": {"href": self.ch.entity_href(asset_id)}},
                         "RelatedAsset": {"parents": [{"href": self.ch.entity_href(asset_id)}]},
-                        "FinalLifeCycleStatusToAsset": {"parent": {"href": f"{self.ch.base}/api/entities/544"}},
+                        "FinalLifeCycleStatusToAsset": {"parent": {"href": parent_lc}},
                         "ContentRepositoryToAsset": {"parents": [{"href": f"{self.ch.base}/api/entities/734"}]},
                     },
                 )
