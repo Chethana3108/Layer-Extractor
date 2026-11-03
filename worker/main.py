@@ -45,9 +45,9 @@ class Processor:
         self.ch = ContentHubClient(s)
         self.ex = ObjectExtractor(s)
 
-    def _status(self, aid: int, status: str, msg: str = "", **extra) -> None:
+    def _status(self, aid: int, status: str, msg: str = "", relations: dict | None = None, **extra) -> None:
         props = {self.s.prop_status: status, self.s.prop_message: msg[:900]} | extra
-        self.ch.update_entity(aid, properties=props)
+        self.ch.update_entity(aid, properties=props, relations=relations)
 
     def handle(self, asset_id: int) -> None:
         s = self.s
@@ -99,14 +99,23 @@ class Processor:
                         s.prop_bbox: json.dumps({"x0": c.bbox[0], "y0": c.bbox[1],
                                                  "x1": c.bbox[2], "y1": c.bbox[3], "kind": c.kind}),
                     },
-                    # OneToMany self-relation: child side holds a single 'parent'
-                    relations={s.rel_parent: {"parent": {"href": self.ch.entity_href(asset_id)}}},
+                    # Link both custom ParentAssetToCutoutAsset and built-in RelatedAsset (visible in UI)
+                    relations={
+                        s.rel_parent: {"parent": {"href": self.ch.entity_href(asset_id)}},
+                        "RelatedAsset": {"parents": [{"href": self.ch.entity_href(asset_id)}]},
+                    },
                 )
                 created.append(new_id)
                 log.info("Asset %s -> cutout %s (%s %.2f)", asset_id, new_id, c.label, c.score)
 
+            # Bidirectional link on parent: populate RelatedAsset so cutouts appear in the "Related Assets" UI component
+            parent_relations = {
+                "RelatedAsset": {
+                    "parents": [{"href": self.ch.entity_href(cid)} for cid in created]
+                }
+            }
             self._status(asset_id, "Completed", f"Created {len(created)} assets: {created}",
-                         **{s.prop_count: len(created)})
+                         relations=parent_relations, **{s.prop_count: len(created)})
         except Exception as e:  # mark the parent so authors see failures in the UI
             log.exception("Asset %s failed", asset_id)
             self._status(asset_id, "Failed", f"{type(e).__name__}: {e}")
