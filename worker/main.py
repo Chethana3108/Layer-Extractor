@@ -59,10 +59,14 @@ class Processor:
                 return
             raise
         file_name = _prop(ent, "FileName") or ""
+        title = _prop(ent, "Title") or ""
 
         # ---- loop guards: never process our own outputs ----
         if _prop(ent, s.prop_is_derived) or s.cutout_marker in file_name:
             log.info("Asset %s is a derived cutout, skipping", asset_id)
+            return
+        if "logo" in file_name.lower() or "logo" in str(title).lower():
+            log.info("Asset %s (%s) is a logo, skipping", asset_id, file_name)
             return
         if os.path.splitext(file_name)[1].lower() not in IMAGE_EXT:
             log.info("Asset %s (%s) is not a raster image, skipping", asset_id, file_name)
@@ -113,6 +117,7 @@ class Processor:
                     relations={
                         s.rel_parent: {"parent": {"href": self.ch.entity_href(asset_id)}},
                         "RelatedAsset": {"parents": [{"href": self.ch.entity_href(asset_id)}]},
+                        "AssetToLinkedAsset": {"parents": [{"href": self.ch.entity_href(asset_id)}]},
                         "FinalLifeCycleStatusToAsset": {"parent": {"href": parent_lc}},
                         "ContentRepositoryToAsset": {"parents": [{"href": f"{self.ch.base}/api/entities/734"}]},
                     },
