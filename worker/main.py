@@ -90,6 +90,9 @@ class Processor:
             for n, c in enumerate(cutouts, 1):
                 name = f"{stem}{s.cutout_marker}{n:02d}_{_slug(c.label)}_{c.kind}.{c.ext}"
                 new_id = self.ch.upload_new_asset(name, c.data, c.mime)
+                # Link custom ParentAssetToCutoutAsset and built-in RelatedAsset (visible in UI).
+                # Cutout must have FinalLifeCycleStatusToAsset=544 (Approved) and ContentRepositoryToAsset=734 (Standard)
+                # so that Content Hub's "Related Assets" search component (Component 38832) displays them.
                 self.ch.update_entity(
                     new_id,
                     properties={
@@ -99,23 +102,19 @@ class Processor:
                         s.prop_bbox: json.dumps({"x0": c.bbox[0], "y0": c.bbox[1],
                                                  "x1": c.bbox[2], "y1": c.bbox[3], "kind": c.kind}),
                     },
-                    # Link both custom ParentAssetToCutoutAsset and built-in RelatedAsset (visible in UI)
                     relations={
                         s.rel_parent: {"parent": {"href": self.ch.entity_href(asset_id)}},
                         "RelatedAsset": {"parents": [{"href": self.ch.entity_href(asset_id)}]},
+                        "FinalLifeCycleStatusToAsset": {"parent": {"href": f"{self.ch.base}/api/entities/544"}},
+                        "ContentRepositoryToAsset": {"parents": [{"href": f"{self.ch.base}/api/entities/734"}]},
                     },
                 )
                 created.append(new_id)
                 log.info("Asset %s -> cutout %s (%s %.2f)", asset_id, new_id, c.label, c.score)
 
-            # Bidirectional link on parent: populate RelatedAsset so cutouts appear in the "Related Assets" UI component
-            parent_relations = {
-                "RelatedAsset": {
-                    "parents": [{"href": self.ch.entity_href(cid)} for cid in created]
-                }
-            }
+            # Update parent extraction status
             self._status(asset_id, "Completed", f"Created {len(created)} assets: {created}",
-                         relations=parent_relations, **{s.prop_count: len(created)})
+                         **{s.prop_count: len(created)})
         except Exception as e:  # mark the parent so authors see failures in the UI
             log.exception("Asset %s failed", asset_id)
             self._status(asset_id, "Failed", f"{type(e).__name__}: {e}")
